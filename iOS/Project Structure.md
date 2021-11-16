@@ -154,6 +154,8 @@ enum SomeViewModelEvent {
     case onSignUp
 }
 
+// MARK: - Actions
+
 enum SomeViewModelAction {
     case onSignUp
     case onForgetPass
@@ -193,3 +195,89 @@ viewModel.output.eventHandler.sink { [weak self] event in
     }
 }.store(in: &localSubscribers)
 ```
+
+**SomeViewModelImpl.swift**
+```
+inal class SomeViewModelImpl: SomeViewModel {
+    
+    // MARK: - Subtypes
+    
+    struct Input: SomeViewModelInput {
+        var email: CurrentValueSubject<String, Never>
+        var password: CurrentValueSubject<String, Never>
+        let onAction: PassthroughSubject<SomeViewModelAction, Never>
+    }
+    
+    struct Output: SomeViewModelOutput {
+        var someValue: CurrentValueSubject<String, Never>
+        var eventHandler: PassthroughSubject<SomeViewModelEvent, Never>
+    }
+    
+    // MARK: - Public Properties
+    
+    let input: Input
+    let output: Output
+    
+    // MARK: - Private Properties
+    
+    //  Input
+    private var email = CurrentValueSubject<String, Never>("")
+    private var password = CurrentValueSubject<String, Never>("")
+    private let onAction = PassthroughSubject<SignInVMAction, Never>()
+    
+    // Output
+    private var someValue = CurrentValueSubject<Int, Never>(0)
+    private let eventHandler = PassthroughSubject<SignInVMEvent, Never>()
+    
+    private var cancellables: Set<AnyCancellable> = []
+    
+    // MARK: - Initializations and Deallocation
+    
+    deinit {
+        print(self)
+    }
+    
+    init() {
+        self.input = .init(email: self.email,
+                           password: self.password,
+                           onAction: self.onAction)
+        self.output = .init(someValue: self.someValue, 
+                            eventHandler: self.eventHandler)
+        self.bind()
+    }
+    
+    // MARK: - Binding
+    
+    private func bind() {
+        self.input.onAction
+            .sink { [weak self] action in
+                switch action {
+                case .signIn:
+                    ... some signIn logic trigger
+                case .onSignUp:
+                    ... some signUp logic trigger
+                case .onForgetPass:
+                // Sending event to coordinator to present onForget flow
+                    self?.eventHandler.send(.onForget)
+                }
+            }
+            .store(in: &cancellables)
+    }
+}
+```
+
+**Models folder** - meant to contain all models that used **ONLY** at this controller flow, otherwise it must be located at global models folder.
+
+**SomeController.swift** - as lightweight version without UI and business logic separated to different files only controller know about **UI** and **viewmodel** so main task is to be responsive for UI actions, delegation etc. and bind it to input or output of viewmodel.
+For example (controller know someButton that is located in rootView (SomeView created earlier) so it binds tap on that button to viewmodels input action with action type performed):
+```
+self.rootView?.someButton?
+            .tapPublisher
+            .sink { [weak self] _ in
+                self?.viewModel.input.onAction.send(.someButtonTapped)
+            }
+            .store(in: &cancellables)
+```
+
+**SomeController.xib** - UI way to assemble view, so as way when we can see interface, it must be informative and prefilled with real data for any developer to open this xib and see potential UI and understand it. We must avoid making xib as simple skeleton without any represented data. (If we add label, it must be filled with mock data, same will be with any UI elements like buttons, ImageViews etc.)
+This way makes easier to navigate and understand what file takes what responsibilities.
